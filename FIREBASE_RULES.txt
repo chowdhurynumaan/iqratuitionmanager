@@ -1,0 +1,87 @@
+FIREBASE FIRESTORE SECURITY RULES
+==================================
+
+COPY-PASTE THIS INTO FIREBASE CONSOLE (Rules tab):
+==================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /tuition_data/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+
+IMPORTANT SECURITY NOTES:
+========================
+
+WARNING: CURRENT RULES ARE OPEN TO EVERYONE
+This is fine for testing but NOT for production!
+
+FOR PRODUCTION - COPY-PASTE ONE OF THESE:
+=========================================
+
+OPTION 1: GOOGLE AUTHENTICATION (Recommended)
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /tuition_data/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+
+OPTION 2: EMAIL/PASSWORD AUTHENTICATION
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /tuition_data/{document=**} {
+      allow read, write: if request.auth != null && request.auth.token.email_verified == true;
+    }
+  }
+}
+
+OPTION 3: SPECIFIC EMAIL WHITELIST
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /tuition_data/{document=**} {
+      allow read, write: if request.auth.token.email in ['admin@iqra.com', 'user@iqra.com'];
+    }
+  }
+}
+
+STEPS TO SET UP RULES:
+=====================
+
+1. Go to: https://console.firebase.google.com/
+2. Select your project: "schoolstream-sny5k"
+3. Click "Firestore Database" in left menu
+4. Click "Rules" tab (next to "Data" tab)
+5. Clear default rules
+6. Paste one of the rule sets above
+7. Click "Publish"
+
+If you get an error about collection not existing:
+- Just publish anyway, it will auto-create when app saves first data
+
+TO ADD AUTHENTICATION (recommended):
+1. Click "Authentication" in left menu
+2. Click "Get Started"
+3. Choose "Google" as sign-in method
+4. Enable it and save
+
+SYNC DATA BETWEEN DEVICES:
+==========================
+
+Once Firebase is set up, any changes made in the app will:
+- Automatically sync to Firestore (cloud storage)
+- Be available on ANY device/browser that opens the app
+- Persist even if localStorage is cleared
+
+If Firefox/Chrome offline, changes save to localStorage first,
+then sync to Firebase when connection returns.

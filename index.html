@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IQRA Tuition Management System</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Firebase SDK (Compat version for vanilla JS) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation Sidebar -->
+        <nav class="sidebar">
+            <div class="logo">
+                <h1>IQRA</h1>
+                <p>Tuition Manager</p>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="#" data-section="dashboard" class="nav-link">Dashboard</a></li>
+                <li><a href="#" data-section="register" class="nav-link active">Student Data</a></li>
+                <li><a href="#" data-section="payments" class="nav-link">Payments</a></li>
+                <li><a href="#" data-section="settings" class="nav-link">Settings</a></li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="section">
+                <div class="section-header">
+                    <h2>Dashboard</h2>
+                    <p>Overview of departments and statistics</p>
+                </div>
+                
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <h3>Total Families</h3>
+                        <p class="stat-number" id="totalFamilies">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Students</h3>
+                        <p class="stat-number" id="totalStudents">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Pending Payments</h3>
+                        <p class="stat-number" id="pendingPayments">$0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Collected</h3>
+                        <p class="stat-number" id="totalCollected">$0</p>
+                    </div>
+                </div>
+
+                <div class="departments-overview">
+                    <h3>Department Overview</h3>
+                    <div class="dept-cards">
+                        <div class="dept-card">
+                            <h4>Summer Program</h4>
+                            <p>July - August | Mon-Thu</p>
+                            <p>10:00 AM - 4:00 PM</p>
+                            <p class="enrollment" id="summerCount">0 Students</p>
+                        </div>
+                        <div class="dept-card">
+                            <h4>Weekend Classes</h4>
+                            <p>All Year (except Summer)</p>
+                            <p>Sat-Sun | 9:30 AM - 2:30 PM</p>
+                            <p class="enrollment" id="weekendCount">0 Students</p>
+                        </div>
+                        <div class="dept-card">
+                            <h4>Evening Classes</h4>
+                            <p>All Year (except Summer)</p>
+                            <p>Mon-Thu | 6:00 PM - 8:00 PM</p>
+                            <p class="enrollment" id="eveningCount">0 Students</p>
+                        </div>
+                        <div class="dept-card">
+                            <h4>Full-Time Program</h4>
+                            <p>All Year (except Summer)</p>
+                            <p>Mon-Fri | 8:00 AM - 4:00 PM</p>
+                            <p class="enrollment" id="fullTimeCount">0 Students</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Register Family Section -->
+            <section id="register" class="section active">
+                <div class="section-header">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <div>
+                            <h2>Student Data</h2>
+                            <p>Manage family and student information</p>
+                        </div>
+                        <button class="add-family-header-btn" id="addCardBtn" title="Add New Family">+</button>
+                    </div>
+                </div>
+
+                <div class="student-cards-container" id="studentCardsContainer"></div>
+            </section>
+
+            <!-- Add/Edit Family Modal -->
+            <div id="familyModal" class="modal hidden">
+                <div class="modal-content modal-lg">
+                    <button class="modal-close">&times;</button>
+                    <h3 id="modalTitle">Add New Family</h3>
+                    
+                    <form id="familyForm">
+                        <div class="modal-section">
+                            <h4>Parent/Guardian Information</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Father Name</label>
+                                    <input type="text" id="fatherName" placeholder="Father name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Father Phone</label>
+                                    <input type="tel" id="fatherPhone" placeholder="Phone number" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Mother Name</label>
+                                    <input type="text" id="motherName" placeholder="Mother name">
+                                </div>
+                                <div class="form-group">
+                                    <label>Mother Phone</label>
+                                    <input type="tel" id="motherPhone" placeholder="Phone number">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Additional Person Name</label>
+                                    <input type="text" id="additionalName" placeholder="Optional">
+                                </div>
+                                <div class="form-group">
+                                    <label>Additional Person Phone</label>
+                                    <input type="tel" id="additionalPhone" placeholder="Optional">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal-section">
+                            <h4>Students</h4>
+                            <div id="studentsContainer"></div>
+                            <button type="button" class="btn-secondary" id="addStudentBtn">+ Add Student</button>
+                        </div>
+
+                        <div class="modal-actions">
+                            <button type="submit" class="btn-primary">Save</button>
+                            <button type="button" class="btn-secondary modal-close-btn">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Student Input Template -->
+            <template id="studentInputTemplate">
+                <div class="student-input-group">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Student Name</label>
+                            <input type="text" class="studentName" placeholder="Name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Gender</label>
+                            <select class="studentGender" required>
+                                <option value="">Select</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Date of Birth</label>
+                            <input type="date" class="studentDOB" required>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-remove-student">Remove Student</button>
+                </div>
+            </template>
+
+            </section>
+            <section id="payments" class="section">
+                <div class="section-header">
+                    <h2>Payment Management</h2>
+                    <p>Record and track family payments</p>
+                </div>
+
+                <div class="payment-filters">
+                    <input type="text" id="searchPayment" placeholder="Search by RG# or family name...">
+                    <select id="paymentStatus">
+                        <option value="">All Statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Partial">Partial</option>
+                        <option value="Paid">Paid</option>
+                    </select>
+                </div>
+
+                <div id="paymentsList" class="payments-list">
+                    <p class="empty-state">No payment data available</p>
+                </div>
+            </section>
+
+            <!-- Settings Section -->
+            <section id="settings" class="section">
+                <div class="section-header">
+                    <h2>Settings & Configuration</h2>
+                    <p>Configure departments, rates, and discounts</p>
+                </div>
+
+                <div class="settings-tabs">
+                    <button class="tab-btn active" data-tab="tuition">Tuition Rates</button>
+                    <button class="tab-btn" data-tab="discounts">Discounts</button>
+                    <button class="tab-btn" data-tab="year">Academic Year</button>
+                </div>
+
+                <!-- Tuition Rates Tab -->
+                <div id="tuition" class="tab-content active">
+                    <h3>Department Tuition Rates</h3>
+                    <div class="rates-form">
+                        <div class="rate-item">
+                            <h4>Summer Program (July-August, Mon-Thu, 10AM-4PM)</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Full Program Rate</label>
+                                    <div class="currency-input">
+                                        <span>$</span>
+                                        <input type="number" class="deptRate" data-dept="Summer" data-type="full" step="0.01">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monthly Rate</label>
+                                    <div class="currency-input">
+                                        <span>$</span>
+                                        <input type="number" class="deptRate" data-dept="Summer" data-type="monthly" step="0.01">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="rate-item">
+                            <h4>Weekend Classes (All Year except Summer)</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Annual Rate</label>
+                                    <div class="currency-input">
+                                        <span>$</span>
+                                        <input type="number" class="deptRate" data-dept="Weekend" data-type="annual" step="0.01">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monthly Rate</label>
+                                    <div class="currency-input">
+                                        <span>$</span>
+                                        <input type="number" class="deptRate" data-dept="Weekend" data-type="monthly" step="0.01">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="rate-item">
+                            <h4>Evening Classes (Mon-Thu, 6PM-8PM, except Summer)</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Annual Rate</label>
+                                    <div class="currency-input">
+                                        <span>$</span>
+                                        <input type="number" class="deptRate" data-dept="Evening" data-type="annual" step="0.01">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monthly Rate</label>
+                                    <div class="currency-input">
+                                        <span>$</span>
+                                        <input type="number" class="deptRate" data-dept="Evening" data-type="monthly" step="0.01">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="rate-item">
+                            <h4>Full-Time Program (Mon-Fri, 8AM-4PM, except Summer)</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Annual Rate</label>
+                                    <div class="currency-input">
+                                        <span>$</span>
+                                        <input type="number" class="deptRate" data-dept="FullTime" data-type="annual" step="0.01">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Monthly Rate</label>
+                                    <div class="currency-input">
+                                        <span>$</span>
+                                        <input type="number" class="deptRate" data-dept="FullTime" data-type="monthly" step="0.01">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="btn-primary" id="saveTuitionBtn">Save Tuition Rates</button>
+                </div>
+
+                <!-- Discounts Tab -->
+                <div id="discounts" class="tab-content">
+                    <h3>Discount Settings</h3>
+                    <div class="discounts-form">
+                        <div class="form-group">
+                            <label>Sibling Discount (%)</label>
+                            <div class="input-group">
+                                <input type="number" id="siblingDiscount" min="0" max="100" step="0.01" placeholder="0">
+                                <span>%</span>
+                            </div>
+                            <small>Applied to 2nd and subsequent children from same family</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Multi-Department Discount (%)</label>
+                            <div class="input-group">
+                                <input type="number" id="multiDeptDiscount" min="0" max="100" step="0.01" placeholder="0">
+                                <span>%</span>
+                            </div>
+                            <small>Applied when a student enrolls in multiple departments</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Monthly Payment Premium (%)</label>
+                            <div class="input-group">
+                                <input type="number" id="monthlyPremium" step="0.01" placeholder="0">
+                                <span>%</span>
+                            </div>
+                            <small>Additional cost for monthly payment vs. upfront (leave blank for no premium)</small>
+                        </div>
+                    </div>
+                    <button class="btn-primary" id="saveDiscountsBtn">Save Discount Settings</button>
+                </div>
+
+                <!-- Academic Year Tab -->
+                <div id="year" class="tab-content">
+                    <h3>Academic Year Settings</h3>
+                    <div class="year-form">
+                        <div class="form-group">
+                            <label>Current Academic Year</label>
+                            <select id="academicYear">
+                                <option>2024-2025</option>
+                                <option>2025-2026</option>
+                                <option>2026-2027</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Summer Program Start</label>
+                            <input type="date" id="summerStart">
+                        </div>
+                        <div class="form-group">
+                            <label>Summer Program End</label>
+                            <input type="date" id="summerEnd">
+                        </div>
+                    </div>
+                    <button class="btn-primary" id="saveYearBtn">Save Academic Year</button>
+                </div>
+            </section>
+
+            <!-- Payment Modal (Outside sections so it's always visible) -->
+            <div id="paymentModal" class="modal hidden">
+                <div class="modal-content modal-payment">
+                    <button class="modal-close">&times;</button>
+                    <h3>Record Payment</h3>
+                    <div class="modal-payment-wrapper">
+                        <div class="payment-form-section">
+                            <form id="paymentForm">
+                                <div class="form-group">
+                                    <label>Family</label>
+                                    <p id="paymentFamilyName" class="info-text"></p>
+                                </div>
+                                <div class="form-group">
+                                    <label>RG Number</label>
+                                    <p id="paymentRG" class="info-text"></p>
+                                </div>
+                                <div class="form-group">
+                                    <label>Payment Method</label>
+                                    <select id="paymentMethod" required>
+                                        <option value="">Select Payment Method</option>
+                                        <option value="Cash">Cash</option>
+                                        <option value="Check">Check</option>
+                                        <option value="Card">Card</option>
+                                        <option value="Transfer">Bank Transfer</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Amount Paid</label>
+                                    <input type="number" id="paymentAmount" placeholder="0.00" step="0.01" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Payment Date</label>
+                                    <input type="date" id="paymentDate" required>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn-primary">Record Payment</button>
+                                    <button type="button" class="btn-secondary modal-close-btn">Cancel</button>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="payment-history-section" id="paymentHistory"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Notification Modal -->
+            <div id="notificationModal" class="modal hidden">
+                <div class="modal-content modal-notification">
+                    <h3 id="notificationTitle">Notification</h3>
+                    <p id="notificationMessage"></p>
+                    <div class="modal-actions">
+                        <button class="btn-primary" id="notificationOkBtn">OK</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Confirmation Modal -->
+            <div id="confirmationModal" class="modal hidden">
+                <div class="modal-content modal-notification">
+                    <h3 id="confirmationTitle">Confirm</h3>
+                    <p id="confirmationMessage"></p>
+                    <div class="modal-actions">
+                        <button class="btn-primary" id="confirmationYesBtn">Yes</button>
+                        <button class="btn-secondary" id="confirmationNoBtn">No</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Modal (for editing amounts) -->
+            <div id="inputModal" class="modal hidden">
+                <div class="modal-content modal-notification">
+                    <h3 id="inputModalTitle">Edit Amount</h3>
+                    <p id="inputModalMessage" style="font-size: 13px;"></p>
+                    <div class="form-group">
+                        <input type="number" id="inputModalInput" placeholder="Enter amount" step="0.01" min="0">
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn-primary" id="inputModalOkBtn">OK</button>
+                        <button class="btn-secondary" id="inputModalCancelBtn">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
