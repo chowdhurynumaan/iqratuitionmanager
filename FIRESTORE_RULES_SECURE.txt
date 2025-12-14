@@ -1,0 +1,256 @@
+FIRESTORE SECURITY RULES - PRODUCTION SECURE VERSION
+=====================================================
+
+COPY-PASTE THIS INTO FIREBASE CONSOLE (Rules tab):
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return request.auth.token.admin == true;
+    }
+    
+    function getUserRole() {
+      return get(/databases/$(database)/documents/userApprovals/$(request.auth.uid)).data.role;
+    }
+    
+    function isApproved() {
+      let approval = get(/databases/$(database)/documents/userApprovals/$(request.auth.uid));
+      return approval.data.status == 'approved';
+    }
+    
+    // ==================== USER APPROVALS ====================
+    // Only admins can manage user approvals
+    match /userApprovals/{userId} {
+      allow read: if request.auth.uid == userId || isAdmin();
+      allow create: if request.auth.uid == userId && request.resource.data.status == 'pending';
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // ==================== MAIN DATA COLLECTIONS ====================
+    // ADMIN: Full read/write access
+    // USER: Full read/write access (approved users only)
+    // VIEWER: Read-only access (approved users only)
+    
+    match /shared_data/{document=**} {
+      // Viewers: Read only
+      allow read: if isSignedIn() && isApproved() && getUserRole() == 'viewer';
+      
+      // Users: Full read/write
+      allow read, write: if isSignedIn() && isApproved() && 
+                            (isAdmin() || getUserRole() == 'user');
+      
+      // Deny all others
+      allow read, write: if false;
+    }
+    
+    // Fallback: Deny everything not explicitly allowed above
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+CHANGES FROM PREVIOUS VERSION:
+==============================
+
+1. ✅ REMOVED: Hardcoded admin email check
+   OLD: return request.auth.token.email == 'chowdhurynumaan@gmail.com';
+   NEW: return request.auth.token.admin == true;
+   
+   WHY: Custom claims are set server-side and cannot be modified by users.
+   Email comparison is insecure because users see the email in code/rules.
+
+2. ✅ ADDED: isApproved() function
+   Ensures only approved users can access data.
+   Prevents pending/rejected users from reading/writing.
+
+3. ✅ ADDED: Viewer-only read restriction
+   Viewers can now ONLY read data, cannot write.
+   Enforced at Firestore level (not just client-side).
+
+4. ✅ ADDED: Explicit deny for unapproved access
+   Fallback rule denies all access not explicitly granted.
+   More secure than allowing by default.
+
+SETUP INSTRUCTIONS:
+===================
+
+STEP 1: Go to Firebase Console
+1. Navigate to: https://console.firebase.google.com/
+2. Select your project: "schoolstream-sny5k"
+3. Click "Firestore Database" in left menu
+4. Click "Rules" tab
+
+STEP 2: Publish These Rules
+1. Clear all existing rules
+2. Paste the rules above
+3. Click "Publish"
+
+STEP 3: Set Up Cloud Functions for Custom Claims
+(This is CRITICAL - without this, all users are treated as non-admin)
+
+Create a Cloud Function to set custom claims when user is approved.
+File: functions/setUserClaims.js
+
+```javascript
+const functions = require('firebase-functions');
+const admin = require('firebase-admin');
+
+admin.initializeApp();
+
+exports.onUserApproval = functions.firestore
+  .document('userApprovals/{uid}')
+  .onWrite(async (change, context) => {
+    const uid = context.params.uid;
+    const data = change.after.data();
+    
+    if (!data) return; // Document deleted
+    
+    if (data.status === 'approved') {
+      // Set custom claims when approved
+      await admin.auth().setCustomUserClaims(uid, {
+        admin: data.role === 'admin',
+        approved: true,
+        role: data.role
+      });
+      
+      console.log(`Set custom claims for user ${uid}: role=${data.role}, admin=${data.role === 'admin'}`);
+    } else if (data.status === 'rejected' || data.status === 'revoked') {
+      // Clear custom claims when rejected/revoked
+      await admin.auth().setCustomUserClaims(uid, {
+        admin: false,
+        approved: false,
+        role: null
+      });
+      
+      console.log(`Cleared custom claims for user ${uid}`);
+    }
+  });
+
+exports.approveUserCallable = functions.https.onCall(async (data, context) => {
+  // Verify caller is admin
+  if (!context.auth?.token?.admin) {
+    throw new functions.https.HttpsError('permission-denied', 'Only admins can approve users');
+  }
+  
+  const { uid, role } = data;
+  
+  // Validate role
+  if (!['admin', 'user', 'viewer'].includes(role)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid role');
+  }
+  
+  try {
+    // Update user approval record (this triggers the onWrite function above)
+    await admin.firestore()
+      .collection('userApprovals')
+      .doc(uid)
+      .update({
+        status: 'approved',
+        role: role,
+        approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+        approvedBy: context.auth.uid
+      });
+    
+    return { success: true, message: `User approved with role: ${role}` };
+  } catch (error) {
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+```
+
+Deploy with:
+```bash
+cd functions
+npm install firebase-admin firebase-functions
+firebase deploy --only functions
+```
+
+STEP 4: Update Client Code (app.js)
+Remove hardcoded admin email checks and use custom claims instead:
+
+```javascript
+// OLD (INSECURE):
+if (user.email === ADMIN_EMAIL) { ... }
+
+// NEW (SECURE):
+firebase.auth().currentUser.getIdTokenResult()
+  .then(idTokenResult => {
+    if (idTokenResult.claims.admin) {
+      // User is admin
+    }
+  });
+```
+
+SECURITY BENEFITS:
+==================
+
+✅ Admin status cannot be forged by users
+✅ Hardcoded email removed from code and rules
+✅ Viewers enforced read-only at database level
+✅ All access requires approval
+✅ Automatic claim removal when user is rejected/revoked
+✅ Audit trail of who approved users (approvedBy field)
+✅ Explicit deny fallback prevents accidental access
+
+TESTING THE RULES:
+==================
+
+1. In Firebase Console → Firestore → Rules tab
+   Click "Rules Playground" (bottom right)
+
+2. Test as Admin (approved with admin role):
+   - Collection: shared_data
+   - Document: families
+   - Action: Read → Should ALLOW
+   - Action: Write → Should ALLOW
+
+3. Test as User (approved with user role):
+   - Action: Read → Should ALLOW
+   - Action: Write → Should ALLOW
+
+4. Test as Viewer (approved with viewer role):
+   - Action: Read → Should ALLOW
+   - Action: Write → Should DENY
+
+5. Test as Unapproved:
+   - Collection: shared_data
+   - Action: Read → Should DENY
+   - Action: Write → Should DENY
+
+6. Test as Anonymous:
+   - Action: Any → Should DENY
+
+BACKUP REFERENCE:
+=================
+
+This is the SECURE version of the rules.
+If you need the OLD (INSECURE) version for comparison:
+File: FIRESTORE_RULES_GOOGLE_AUTH.txt (deprecated)
+
+DO NOT USE THE OLD RULES IN PRODUCTION.
+They have security vulnerabilities that can be exploited.
+
+TROUBLESHOOTING:
+================
+
+Issue: "Permission denied" errors when users try to access data
+Solution: Make sure users are approved and custom claims are set
+
+Issue: "Users can't read data" after deploying rules
+Solution: 
+1. Verify users have "status: approved" in userApprovals collection
+2. Check Cloud Function is deployed and running
+3. Force user to re-login (custom claims are cached in ID token)
+
+Issue: "Can't set custom claims in Cloud Function"
+Solution: Make sure Cloud Function has proper Firebase Admin SDK permissions
+

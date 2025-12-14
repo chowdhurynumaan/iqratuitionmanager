@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow any authenticated user to read/write everything
+    // (App.js will enforce role-based visibility on client side)
+    match /shared_data/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow users to create/read their own approval request
+    match /userApprovals/{userId} {
+      allow read: if request.auth.uid == userId;
+      allow create: if request.auth.uid == userId;
+      allow update, delete: if false;
+    }
+  }
+}

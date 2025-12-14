@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function getUserApproval() {
+      return get(/databases/$(database)/documents/userApprovals/$(request.auth.uid));
+    }
+    
+    function isApproved() {
+      let approval = getUserApproval();
+      return approval.exists && approval.data.status == 'approved';
+    }
+    
+    function getUserRole() {
+      let approval = getUserApproval();
+      return approval.data.role;
+    }
+    
+    function isAdmin() {
+      return isApproved() && getUserRole() == 'admin';
+    }
+    
+    // User Approvals - only admins can manage
+    match /userApprovals/{userId} {
+      allow read: if request.auth.uid == userId || isAdmin();
+      allow create: if request.auth.uid == userId && request.resource.data.status == 'pending';
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Main data collections with role-based access
+    match /shared_data/{document=**} {
+      // Approved admins: Full read/write
+      allow read, write: if isAdmin();
+      
+      // Approved users (non-admin): Full read/write
+      allow read, write: if isApproved() && getUserRole() == 'user';
+      
+      // Approved viewers: Read only
+      allow read: if isApproved() && getUserRole() == 'viewer';
+      
+      // Deny all others
+      allow read, write: if false;
+    }
+    
+    // Fallback: Deny everything not explicitly allowed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

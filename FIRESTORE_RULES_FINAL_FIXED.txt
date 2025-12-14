@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ==================== HELPER FUNCTIONS ====================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return request.auth.token.email == 'chowdhurynumaan@gmail.com';
+    }
+    
+    function isApproved() {
+      let approvalDoc = get(/databases/$(database)/documents/userApprovals/$(request.auth.uid));
+      return approvalDoc.data.status == 'approved';
+    }
+    
+    function getUserRole() {
+      let approvalDoc = get(/databases/$(database)/documents/userApprovals/$(request.auth.uid));
+      return approvalDoc.data.role;
+    }
+    
+    function isUser() {
+      return isApproved() && getUserRole() == 'user';
+    }
+    
+    function isViewer() {
+      return isApproved() && getUserRole() == 'viewer';
+    }
+    
+    // ==================== USER APPROVALS COLLECTION ====================
+    // Only admins can manage approvals
+    match /userApprovals/{userId} {
+      // Users can read their own approval status
+      allow read: if request.auth.uid == userId;
+      
+      // Users can request approval
+      allow create: if request.auth.uid == userId && 
+                       request.resource.data.status == 'pending' &&
+                       request.resource.data.uid == request.auth.uid;
+      
+      // Only admins can approve/reject/revoke users
+      allow update, delete: if isAdmin();
+    }
+    
+    // ==================== MAIN DATA COLLECTIONS ====================
+    // ADMINS: Full read/write
+    // USERS: Full read/write (approved users)
+    // VIEWERS: Read-only (approved viewers)
+    // EVERYONE ELSE: Deny
+    
+    match /shared_data/{document=**} {
+      // Admins get everything
+      allow read, write: if isAdmin();
+      
+      // Approved users get full access
+      allow read, write: if isUser();
+      
+      // Approved viewers get read-only
+      allow read: if isViewer();
+      
+      // Deny everything else
+      allow read, write: if false;
+    }
+    
+    // ==================== DENY EVERYTHING NOT EXPLICITLY ALLOWED ====================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

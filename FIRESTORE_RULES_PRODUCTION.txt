@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return request.auth.token.admin == true;
+    }
+    
+    function isApproved() {
+      return request.auth.token.approved == true;
+    }
+    
+    function getUserRole() {
+      return request.auth.token.role;
+    }
+    
+    // ==================== USER APPROVALS ====================
+    // Only admins can manage user approvals
+    match /userApprovals/{userId} {
+      // Users can read their own approval status
+      allow read: if request.auth.uid == userId;
+      
+      // Users can create their own approval request (pending)
+      allow create: if request.auth.uid == userId && 
+                       request.resource.data.status == 'pending' &&
+                       request.resource.data.uid == request.auth.uid;
+      
+      // Only admins can update (approve/reject/revoke)
+      allow update: if isAdmin();
+      
+      // Only admins can delete
+      allow delete: if isAdmin();
+    }
+    
+    // ==================== MAIN DATA COLLECTIONS ====================
+    match /shared_data/{document=**} {
+      // ADMINS: Full read/write access
+      allow read, write: if isAdmin();
+      
+      // USERS: Full read/write access (must be approved)
+      allow read, write: if isApproved() && getUserRole() == 'user';
+      
+      // VIEWERS: Read-only access (must be approved)
+      allow read: if isApproved() && getUserRole() == 'viewer';
+      
+      // Deny all others
+      allow read, write: if false;
+    }
+    
+    // ==================== FALLBACK ====================
+    // Deny everything not explicitly allowed above
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -8,13 +8,40 @@
     <!-- Firebase SDK (Compat version for vanilla JS) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <!-- Google Sign-In -->
+    <script src="https://accounts.google.com/gapi/client:platform.js" async defer></script>
     <!-- SheetJS for Excel export/import -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-    <div class="container">
+    <!-- Login Modal -->
+    <div id="loginModal" class="login-modal">
+        <div class="login-modal-content">
+            <div class="login-modal-header">
+                <h1>IQRA Tuition Manager</h1>
+                <p>Secure Login</p>
+            </div>
+            <div class="login-modal-body">
+                <p>Sign in with your Google account to access the tuition management system.</p>
+                <div id="loginStatus" style="display: none; margin-bottom: 20px;"></div>
+                <button id="googleSignInBtn" class="google-signin-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                    </svg>
+                    Sign in with Google
+                </button>
+                <div id="loginError" class="login-error" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" id="appContainer" style="display: none;">
         <!-- Navigation Sidebar -->
-        <nav class="sidebar">
+        <nav class="sidebar" id="mainSidebar">
             <div class="logo">
                 <h1>IQRA</h1>
                 <p>Tuition Manager</p>
@@ -236,6 +263,8 @@
                     <button class="tab-btn" data-tab="schedule">Schedule</button>
                     <button class="tab-btn" data-tab="discounts">Discounts</button>
                     <button class="tab-btn" data-tab="year">Academic Year</button>
+                    <button class="tab-btn" data-tab="admin" id="adminTabBtn" style="display: none;">👨‍💼 Admin</button>
+                    <button class="tab-btn btn-danger" id="signOutBtn" style="margin-left: auto;">🚪 Sign Out</button>
                 </div>
 
                 <!-- Departments Tab -->
@@ -302,6 +331,22 @@
                     </div>
                     <button class="btn-primary" id="saveYearBtn">Save Academic Year</button>
                 </div>
+
+                <!-- Admin Tab -->
+                <div id="admin" class="tab-content">
+                    <h3>User Access Management</h3>
+                    <p style="color: #6b7280; font-size: 13px; margin-bottom: 20px;">Review and approve user access requests</p>
+                    
+                    <div id="adminPendingContainer" style="display: none;">
+                        <h4 style="margin-top: 0; margin-bottom: 12px;">⏳ Pending Requests</h4>
+                        <div id="pendingUsersList" style="display: grid; gap: 12px;"></div>
+                    </div>
+                    
+                    <div id="adminApprovedContainer" style="margin-top: 30px;">
+                        <h4 style="margin-top: 0; margin-bottom: 12px;">✅ Approved Users</h4>
+                        <div id="approvedUsersList" style="display: grid; gap: 10px;"></div>
+                    </div>
+                </div>
             </section>
 
             <!-- Payment Modal (Outside sections so it's always visible) -->
@@ -344,6 +389,20 @@
                                     </div>
                                     <div class="form-input-compact">
                                         <input type="number" id="paymentAmount" class="form-input form-input-active" placeholder="Amount" step="0.01" required>
+                                    </div>
+                                </div>
+
+                                <!-- Row 3: Student + Department Selection -->
+                                <div class="form-row-compact">
+                                    <div class="form-input-compact">
+                                        <select id="paymentStudent" class="form-input form-input-active" title="Student" required>
+                                            <option value="">Select Student</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-input-compact">
+                                        <select id="paymentDepartment" class="form-input form-input-active" title="Department" required>
+                                            <option value="">Select Department</option>
+                                        </select>
                                     </div>
                                 </div>
 

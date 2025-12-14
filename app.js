@@ -1,3 +1,7 @@
+// ==================== ADMIN EMAIL CONFIGURATION ====================
+// Change this to your email to be the admin
+const ADMIN_EMAIL = 'chowdhurynumaan@gmail.com';
+
 // ==================== DATA MANAGEMENT ====================
 
 class TuitionManager {
@@ -12,6 +16,7 @@ class TuitionManager {
         this.nextRGNumber = 1001;
         this.payments = [];
         this.transactionCounter = 1000;
+        this.userRole = 'viewer'; // Default role: 'admin', 'user', or 'viewer'
         
         // Load data asynchronously
         this.loadAllData();
@@ -113,6 +118,7 @@ class TuitionManager {
 
         this.setupEventListeners();
         this.setupSectionHandlers();
+        this.applyRoleBasedVisibility();
         this.loadTuitionRates();
         this.loadDiscounts();
         this.displayStudentCards();
@@ -574,13 +580,25 @@ class TuitionManager {
         const tabBtns = document.querySelectorAll('.tab-btn');
         console.log('Found', tabBtns.length, 'tab buttons');
         tabBtns.forEach(btn => {
-            console.log('Attaching listener to tab:', btn.dataset.tab);
-            btn.addEventListener('click', (e) => {
-                console.log('Tab clicked:', btn.dataset.tab);
-                e.preventDefault();
-                this.switchTab(btn);
-            });
+            if (btn.dataset.tab) {
+                console.log('Attaching listener to tab:', btn.dataset.tab);
+                btn.addEventListener('click', (e) => {
+                    console.log('Tab clicked:', btn.dataset.tab);
+                    e.preventDefault();
+                    this.switchTab(btn);
+                });
+            }
         });
+
+        // Sign Out Button
+        const signOutBtn = document.getElementById('signOutBtn');
+        if (signOutBtn) {
+            signOutBtn.addEventListener('click', () => {
+                if (confirm('Are you sure you want to sign out?')) {
+                    handleSignOut();
+                }
+            });
+        }
 
         document.getElementById('saveTuitionBtn')?.addEventListener('click', () => this.saveTuitionRates());
         document.getElementById('saveDiscountsBtn')?.addEventListener('click', () => this.saveDiscountSettings());
@@ -673,6 +691,12 @@ class TuitionManager {
             paymentForm.addEventListener('submit', (e) => this.handlePaymentRecord(e));
         }
 
+        // Payment Form: Student selection change
+        const paymentStudentSelect = document.getElementById('paymentStudent');
+        if (paymentStudentSelect) {
+            paymentStudentSelect.addEventListener('change', (e) => this.populatePaymentDepartments(e.target.value));
+        }
+
         // Hamburger menu toggle for mobile
         const hamburgerBtn = document.getElementById('hamburgerBtn');
         const navMenu = document.getElementById('navMenu');
@@ -727,6 +751,51 @@ class TuitionManager {
         });
     }
 
+    applyRoleBasedVisibility() {
+        const role = this.userRole;
+        const sidebar = document.getElementById('mainSidebar');
+        const adminTabBtn = document.getElementById('adminTabBtn');
+        
+        if (role === 'viewer') {
+            // Viewers see ONLY dashboard - hide entire sidebar
+            if (sidebar) sidebar.style.display = 'none';
+            
+            // Hide all nav links
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.style.display = 'none';
+            });
+            
+            // Show only dashboard
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            const dashboard = document.getElementById('dashboard');
+            if (dashboard) dashboard.classList.add('active');
+            
+        } else if (role === 'user') {
+            // Users see everything except admin tab
+            if (sidebar) sidebar.style.display = '';
+            
+            // Show all nav links
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.style.display = '';
+            });
+            
+            // Hide admin tab in Settings
+            if (adminTabBtn) adminTabBtn.style.display = 'none';
+            
+        } else if (role === 'admin') {
+            // Admins see everything
+            if (sidebar) sidebar.style.display = '';
+            
+            // Show all nav links
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.style.display = '';
+            });
+            
+            // Show admin tab in Settings
+            if (adminTabBtn) adminTabBtn.style.display = '';
+        }
+    }
+
     switchTab(tabBtn) {
         console.log('switchTab called with:', tabBtn);
         if (!tabBtn || !tabBtn.dataset.tab) {
@@ -746,11 +815,295 @@ class TuitionManager {
         if (tabContent) {
             tabContent.classList.add('active');
             console.log('Tab activated:', tabName);
+            
+            // Load admin data if admin tab
+            if (tabName === 'admin') {
+                this.loadAdminPanel();
+            }
         } else {
             console.log('Tab content not found for:', tabName);
         }
     }
 
+    // ==================== ADMIN FUNCTIONS ====================
+
+    async loadAdminPanel() {
+        // Security check: only admin can load this
+        const user = firebase.auth().currentUser;
+        if (!user || user.email !== ADMIN_EMAIL) {
+            console.error('Unauthorized: only admin can access this');
+            this.showNotification('Error', 'Unauthorized access');
+            return;
+        }
+        
+        try {
+            const db = firebase.firestore();
+            
+            // Fetch pending approvals
+            const pendingSnap = await db.collection('userApprovals')
+                .where('status', '==', 'pending')
+                .orderBy('requestedAt', 'desc')
+                .get();
+            
+            // Fetch approved users
+            const approvedSnap = await db.collection('userApprovals')
+                .where('status', '==', 'approved')
+                .orderBy('requestedAt', 'desc')
+                .get();
+            
+            const pendingContainer = document.getElementById('adminPendingContainer');
+            const pendingList = document.getElementById('pendingUsersList');
+            const approvedContainer = document.getElementById('adminApprovedContainer');
+            const approvedList = document.getElementById('approvedUsersList');
+            
+            // Show pending requests
+            if (pendingSnap.size > 0) {
+                pendingContainer.style.display = 'block';
+                pendingList.innerHTML = '';
+                
+                pendingSnap.forEach(doc => {
+                    const user = doc.data();
+                    const requestDate = user.requestedAt ? new Date(user.requestedAt.toDate()).toLocaleDateString() : 'Unknown';
+                    
+                    const userDiv = document.createElement('div');
+                    userDiv.style.cssText = 'border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px; background: #fffbeb;';
+                    
+                    const infoDiv = document.createElement('div');
+                    infoDiv.style.flex = '1';
+                    
+                    const nameP = document.createElement('p');
+                    nameP.textContent = user.displayName || 'Unknown';
+                    nameP.style.cssText = 'margin: 0 0 4px 0; font-weight: 600; color: #111827;';
+                    
+                    const emailP = document.createElement('p');
+                    emailP.textContent = user.email;
+                    emailP.style.cssText = 'margin: 0 0 4px 0; font-size: 13px; color: #6b7280;';
+                    
+                    const dateP = document.createElement('p');
+                    dateP.textContent = 'Requested: ' + requestDate;
+                    dateP.style.cssText = 'margin: 0; font-size: 12px; color: #9ca3af;';
+                    
+                    infoDiv.appendChild(nameP);
+                    infoDiv.appendChild(emailP);
+                    infoDiv.appendChild(dateP);
+                    
+                    const roleSelect = document.createElement('select');
+                    roleSelect.id = 'role-' + doc.id;
+                    roleSelect.className = 'form-input';
+                    roleSelect.style.cssText = 'padding: 6px 10px; font-size: 12px; width: 120px;';
+                    roleSelect.innerHTML = '<option value="viewer" selected>Viewer</option><option value="user">User</option><option value="admin">Admin</option>';
+                    
+                    const buttonsDiv = document.createElement('div');
+                    buttonsDiv.style.cssText = 'display: flex; gap: 8px;';
+                    
+                    const approveBtn = document.createElement('button');
+                    approveBtn.className = 'btn-primary';
+                    approveBtn.textContent = '✓ Approve';
+                    approveBtn.style.cssText = 'padding: 8px 16px; font-size: 13px;';
+                    approveBtn.onclick = () => app.approveUser(doc.id, user.email);
+                    
+                    const rejectBtn = document.createElement('button');
+                    rejectBtn.className = 'btn-danger';
+                    rejectBtn.textContent = '✕ Reject';
+                    rejectBtn.style.cssText = 'padding: 8px 16px; font-size: 13px;';
+                    rejectBtn.onclick = () => app.rejectUser(doc.id, user.email);
+                    
+                    buttonsDiv.appendChild(approveBtn);
+                    buttonsDiv.appendChild(rejectBtn);
+                    
+                    userDiv.appendChild(infoDiv);
+                    userDiv.appendChild(roleSelect);
+                    userDiv.appendChild(buttonsDiv);
+                    
+                    pendingList.appendChild(userDiv);
+                });
+            } else {
+                pendingContainer.style.display = 'none';
+            }
+            
+            // Show approved users
+            if (approvedSnap.size > 0) {
+                approvedList.innerHTML = '';
+                approvedSnap.forEach(doc => {
+                    const user = doc.data();
+                    const userRole = user.role || 'viewer';
+                    const approvalDate = user.approvedAt ? new Date(user.approvedAt.toDate()).toLocaleDateString() : user.requestedAt ? new Date(user.requestedAt.toDate()).toLocaleDateString() : 'Unknown';
+                    const roleColors = { admin: '#fee2e2', user: '#dbeafe', viewer: '#f0fdf4' };
+                    
+                    const userDiv = document.createElement('div');
+                    userDiv.style.cssText = `border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px; background: ${roleColors[userRole]};`;
+                    
+                    const infoDiv = document.createElement('div');
+                    infoDiv.style.flex = '1';
+                    
+                    const nameP = document.createElement('p');
+                    nameP.textContent = user.displayName || 'Unknown';
+                    nameP.style.cssText = 'margin: 0 0 4px 0; font-weight: 600; color: #111827;';
+                    
+                    const emailP = document.createElement('p');
+                    emailP.textContent = user.email;
+                    emailP.style.cssText = 'margin: 0 0 4px 0; font-size: 13px; color: #6b7280;';
+                    
+                    const dateP = document.createElement('p');
+                    dateP.textContent = 'Approved: ' + approvalDate;
+                    dateP.style.cssText = 'margin: 0; font-size: 12px; color: #9ca3af;';
+                    
+                    infoDiv.appendChild(nameP);
+                    infoDiv.appendChild(emailP);
+                    infoDiv.appendChild(dateP);
+                    
+                    const roleSelect = document.createElement('select');
+                    roleSelect.id = 'role-' + doc.id;
+                    roleSelect.className = 'form-input';
+                    roleSelect.style.cssText = 'padding: 6px 10px; font-size: 12px; width: 120px;';
+                    
+                    const viewerOpt = document.createElement('option');
+                    viewerOpt.value = 'viewer';
+                    viewerOpt.textContent = 'Viewer';
+                    if (userRole === 'viewer') viewerOpt.selected = true;
+                    
+                    const userOpt = document.createElement('option');
+                    userOpt.value = 'user';
+                    userOpt.textContent = 'User';
+                    if (userRole === 'user') userOpt.selected = true;
+                    
+                    const adminOpt = document.createElement('option');
+                    adminOpt.value = 'admin';
+                    adminOpt.textContent = 'Admin';
+                    if (userRole === 'admin') adminOpt.selected = true;
+                    
+                    roleSelect.appendChild(viewerOpt);
+                    roleSelect.appendChild(userOpt);
+                    roleSelect.appendChild(adminOpt);
+                    roleSelect.onchange = () => app.changeUserRole(doc.id, roleSelect.value);
+                    
+                    const revokeBtn = document.createElement('button');
+                    revokeBtn.className = 'btn-danger';
+                    revokeBtn.textContent = 'Revoke';
+                    revokeBtn.style.cssText = 'padding: 8px 16px; font-size: 13px;';
+                    revokeBtn.onclick = () => app.revokeUser(doc.id, user.email);
+                    
+                    userDiv.appendChild(infoDiv);
+                    userDiv.appendChild(roleSelect);
+                    userDiv.appendChild(revokeBtn);
+                    
+                    approvedList.appendChild(userDiv);
+                });
+            } else {
+                approvedList.innerHTML = '';
+                const noUsersP = document.createElement('p');
+                noUsersP.textContent = 'No approved users yet';
+                noUsersP.style.cssText = 'color: #9ca3af; font-size: 13px;';
+                approvedList.appendChild(noUsersP);
+            }
+        } catch (error) {
+            console.error('Error loading admin panel:', error);
+        }
+    }
+
+    async approveUser(uid, email) {
+        // Security check: only admin can approve users
+        const user = firebase.auth().currentUser;
+        if (!user || user.email !== ADMIN_EMAIL) {
+            console.error('Unauthorized: only admin can approve users');
+            this.showNotification('Error', 'Unauthorized');
+            return;
+        }
+        
+        try {
+            // Get selected role from dropdown
+            const roleSelect = document.getElementById(`role-${uid}`);
+            const selectedRole = roleSelect ? roleSelect.value : 'viewer';
+            
+            const db = firebase.firestore();
+            await db.collection('userApprovals').doc(uid).update({
+                status: 'approved',
+                role: selectedRole,
+                approvedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            console.log('User approved:', email, 'with role:', selectedRole);
+            this.showNotification('Success', `${email} approved as ${selectedRole}`);
+            this.loadAdminPanel();
+        } catch (error) {
+            console.error('Error approving user:', error);
+            this.showNotification('Error', 'Failed to approve user');
+        }
+    }
+
+    async changeUserRole(uid, newRole) {
+        // Security check: only admin can change roles
+        const user = firebase.auth().currentUser;
+        if (!user || user.email !== ADMIN_EMAIL) {
+            console.error('Unauthorized: only admin can change roles');
+            this.showNotification('Error', 'Unauthorized');
+            return;
+        }
+        
+        try {
+            const db = firebase.firestore();
+            await db.collection('userApprovals').doc(uid).update({
+                role: newRole
+            });
+            console.log('User role changed to:', newRole);
+            this.showNotification('Success', `Role changed to ${newRole}`);
+            this.loadAdminPanel();
+        } catch (error) {
+            console.error('Error changing user role:', error);
+            this.showNotification('Error', 'Failed to change role');
+        }
+    }
+
+    async rejectUser(uid, email) {
+        // Security check: only admin can reject users
+        const user = firebase.auth().currentUser;
+        if (!user || user.email !== ADMIN_EMAIL) {
+            console.error('Unauthorized: only admin can reject users');
+            this.showNotification('Error', 'Unauthorized');
+            return;
+        }
+        
+        if (!confirm(`Are you sure you want to reject ${email}?`)) return;
+        
+        try {
+            const db = firebase.firestore();
+            await db.collection('userApprovals').doc(uid).update({
+                status: 'rejected',
+                rejectedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            console.log('User rejected:', email);
+            this.showNotification('Success', `${email} has been rejected`);
+            this.loadAdminPanel();
+        } catch (error) {
+            console.error('Error rejecting user:', error);
+            this.showNotification('Error', 'Failed to reject user');
+        }
+    }
+
+    async revokeUser(uid, email) {
+        // Security check: only admin can revoke users
+        const user = firebase.auth().currentUser;
+        if (!user || user.email !== ADMIN_EMAIL) {
+            console.error('Unauthorized: only admin can revoke users');
+            this.showNotification('Error', 'Unauthorized');
+            return;
+        }
+        
+        if (!confirm(`Are you sure you want to revoke access for ${email}?`)) return;
+        
+        try {
+            const db = firebase.firestore();
+            await db.collection('userApprovals').doc(uid).update({
+                status: 'revoked',
+                revokedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            console.log('User revoked:', email);
+            this.showNotification('Success', `${email} access has been revoked`);
+            this.loadAdminPanel();
+        } catch (error) {
+            console.error('Error revoking user:', error);
+            this.showNotification('Error', 'Failed to revoke user');
+        }
+    }
     // ==================== STUDENT CARD MANAGEMENT ====================
 
     displayStudentCards() {
@@ -832,7 +1185,7 @@ class TuitionManager {
                     emptyMessage.style.gridColumn = '1/-1';
                     document.getElementById('studentsTableBody').appendChild(emptyMessage);
                 }
-                emptyMessage.innerHTML = `No students found matching "${query}"`;
+                emptyMessage.textContent = 'No students found matching "' + query + '"';
                 emptyMessage.style.display = '';
             } else if (emptyMessage) {
                 emptyMessage.style.display = 'none';
@@ -852,7 +1205,7 @@ class TuitionManager {
                     emptyMessage.style.gridColumn = '1/-1';
                     document.getElementById('studentCardsContainer').appendChild(emptyMessage);
                 }
-                emptyMessage.innerHTML = `No families found matching "${query}"`;
+                emptyMessage.textContent = 'No families found matching "' + query + '"';
                 emptyMessage.style.display = '';
             } else if (emptyMessage) {
                 emptyMessage.style.display = 'none';
@@ -960,6 +1313,8 @@ class TuitionManager {
         const paymentDateEl = document.getElementById('paymentDate');
         const paymentAmountEl = document.getElementById('paymentAmount');
         const paymentMethodEl = document.getElementById('paymentMethod');
+        const paymentStudentEl = document.getElementById('paymentStudent');
+        const paymentDeptEl = document.getElementById('paymentDepartment');
         
         if (!paymentRGEl || !paymentFormEl) return;
         
@@ -982,6 +1337,14 @@ class TuitionManager {
         if (paymentAmountEl) paymentAmountEl.value = '';
         if (paymentMethodEl) paymentMethodEl.value = '';
         
+        // Populate students list
+        this.populatePaymentStudents(rgNumber);
+        
+        // Reset department list
+        if (paymentDeptEl) {
+            paymentDeptEl.innerHTML = '<option value="">Select Department</option>';
+        }
+        
         // Show modal
         modal.classList.remove('hidden');
         
@@ -990,6 +1353,48 @@ class TuitionManager {
             this.displayPaymentHistory(rgNumber);
         } catch (err) {
             console.error('Error displaying payment history:', err);
+        }
+    }
+
+    populatePaymentStudents(rgNumber) {
+        const family = this.families.find(f => f.rgNumber === rgNumber);
+        const studentSelect = document.getElementById('paymentStudent');
+        
+        if (!studentSelect || !family) return;
+        
+        studentSelect.innerHTML = '<option value="">Select Student</option>';
+        
+        family.children.forEach(child => {
+            const option = document.createElement('option');
+            option.value = child.name;
+            option.textContent = child.name;
+            studentSelect.appendChild(option);
+        });
+    }
+
+    populatePaymentDepartments(studentName) {
+        const paymentFormEl = document.getElementById('paymentForm');
+        const rgNumber = parseInt(paymentFormEl.dataset.rgNumber);
+        const family = this.families.find(f => f.rgNumber === rgNumber);
+        const deptSelect = document.getElementById('paymentDepartment');
+        
+        if (!deptSelect || !family) return;
+        
+        deptSelect.innerHTML = '<option value="">Select Department</option>';
+        
+        // Find the student's departments
+        const student = family.children.find(c => c.name === studentName);
+        if (student && student.departments) {
+            student.departments.forEach(deptName => {
+                const dept = this.departments.find(d => d.name === deptName);
+                if (dept) {
+                    const option = document.createElement('option');
+                    option.value = deptName;
+                    const monthlyAmount = this.calculateMonthlyAmount(dept.fullAmount, dept.startDate, dept.endDate);
+                    option.textContent = `${deptName} - $${monthlyAmount.toFixed(2)}/month`;
+                    deptSelect.appendChild(option);
+                }
+            });
         }
     }
 
@@ -1129,7 +1534,19 @@ class TuitionManager {
                     historyHtml += `
                         <div class="${entryClass}" data-txn-id="${txnId}">
                             <div class="history-entry-date">${date}</div>
-                            <div class="history-entry-method">${payment.method}</div>
+                            <div class="history-entry-details">
+                                <div class="history-detail-row">
+                                    <span class="detail-label">Student:</span>
+                                    <span class="detail-value">${payment.studentName || 'N/A'}</span>
+                                </div>
+                                <div class="history-detail-row">
+                                    <span class="detail-label">Department:</span>
+                                    <span class="detail-value">${payment.departmentName || 'N/A'}</span>
+                                </div>
+                                <div class="history-detail-row">
+                                    <span class="detail-label">${payment.method}</span>
+                                </div>
+                            </div>
                             <div class="history-entry-amount paid">${amountDisplay}</div>
                             <div class="history-entry-actions">
                                 ${payment.status === 'voided' || payment.isSuperseded ? statusText : `
@@ -1153,16 +1570,13 @@ class TuitionManager {
         const family = this.families.find(f => f.rgNumber === rgNumber);
         if (!family) return { children: [], totalDue: 0, totalPaid: 0 };
 
-        const familyPayments = this.payments.filter(p => p.rgNumber === rgNumber && p.status !== 'voided' && !p.isSuperseded);
-        const totalPaidAmount = familyPayments.reduce((sum, p) => sum + parseFloat(p.amount) || 0, 0);
-
         const breakdown = {
             children: [],
             totalDue: 0,
             totalPaid: 0
         };
 
-        // First pass: calculate all departments and total due
+        // First pass: calculate all departments for each student and total due
         family.children.forEach(child => {
             const childBreakdown = {
                 name: child.name,
@@ -1175,38 +1589,34 @@ class TuitionManager {
             (child.departments || []).forEach(deptName => {
                 const dept = this.departments.find(d => d.name === deptName);
                 if (dept) {
+                    // Find payments specifically for this student in this department
+                    const studentDeptPayments = this.payments.filter(p => 
+                        p.rgNumber === rgNumber && 
+                        p.studentName === child.name && 
+                        p.departmentName === deptName &&
+                        p.status !== 'voided' && 
+                        !p.isSuperseded
+                    );
+                    const paidAmount = studentDeptPayments.reduce((sum, p) => sum + parseFloat(p.amount) || 0, 0);
+
                     childBreakdown.departments.push({
                         name: deptName,
                         amount: dept.fullAmount,
-                        paid: 0,
-                        due: dept.fullAmount
+                        paid: paidAmount,
+                        due: Math.max(0, dept.fullAmount - paidAmount)
                     });
                     childBreakdown.totalDue += dept.fullAmount;
+                    childBreakdown.totalPaid += paidAmount;
                 }
             });
 
             breakdown.children.push(childBreakdown);
             breakdown.totalDue += childBreakdown.totalDue;
+            breakdown.totalPaid += childBreakdown.totalPaid;
         });
 
-        // Second pass: distribute paid amounts proportionally
         breakdown.children.forEach(childBreakdown => {
-            if (breakdown.totalDue > 0 && childBreakdown.totalDue > 0) {
-                const childProportion = childBreakdown.totalDue / breakdown.totalDue;
-                const childPaid = totalPaidAmount * childProportion;
-                childBreakdown.totalPaid = childPaid;
-
-                // Distribute child's paid amount across departments
-                childBreakdown.departments.forEach(dept => {
-                    const deptProportion = dept.amount / childBreakdown.totalDue;
-                    const deptPaid = childPaid * deptProportion;
-                    dept.paid = deptPaid;
-                    dept.due = Math.max(0, dept.amount - deptPaid);
-                });
-            }
-
             childBreakdown.remaining = Math.max(0, childBreakdown.totalDue - childBreakdown.totalPaid);
-            breakdown.totalPaid += childBreakdown.totalPaid;
         });
 
         return breakdown;
@@ -1316,15 +1726,19 @@ class TuitionManager {
         const amount = parseFloat(document.getElementById('paymentAmount').value);
         const method = document.getElementById('paymentMethod').value;
         const date = document.getElementById('paymentDate').value;
+        const studentName = document.getElementById('paymentStudent').value;
+        const departmentName = document.getElementById('paymentDepartment').value;
 
-        if (!amount || !method || !date) {
-            this.showNotification('Missing Information', 'Please fill in all payment details');
+        if (!amount || !method || !date || !studentName || !departmentName) {
+            this.showNotification('Missing Information', 'Please fill in all payment details including Student and Department');
             return;
         }
 
         const payment = {
             transactionId: this.generateTransactionId(),
             rgNumber: rgNumber,
+            studentName: studentName,
+            departmentName: departmentName,
             amount: amount,
             method: method,
             date: date,
@@ -1337,7 +1751,7 @@ class TuitionManager {
         this.payments.push(payment);
         this.saveData('payments', this.payments);
 
-        this.showNotification('Success', 'Payment recorded successfully!\n\nTransaction ID: ' + payment.transactionId);
+        this.showNotification('Success', 'Payment recorded successfully!\n\nStudent: ' + studentName + '\nDepartment: ' + departmentName + '\nAmount: $' + amount.toFixed(2) + '\n\nTransaction ID: ' + payment.transactionId);
         
         // Refresh the payment history display and breakdown
         this.displayPaymentHistory(rgNumber);
@@ -1774,13 +2188,44 @@ class TuitionManager {
             const daysLeft = Math.ceil((new Date(dept.endDate) - new Date()) / (1000 * 60 * 60 * 24));
             const isExpired = daysLeft < 0;
             
+            // Calculate monthly and one-time costs
+            const monthlyAmount = this.calculateMonthlyAmount(dept.fullAmount, dept.startDate, dept.endDate);
+            const monthsDuration = this.calculateMonthsDuration(dept.startDate, dept.endDate);
+            
+            // Calculate total collected for this department
+            const totalCollected = this.payments
+                .filter(p => p.departmentName === dept.name && p.status !== 'voided' && !p.isSuperseded)
+                .reduce((sum, p) => sum + parseFloat(p.amount) || 0, 0);
+            
             html += `
                 <div class="dept-card">
                     <h4>${dept.name}</h4>
-                    <p>${new Date(dept.startDate).toLocaleDateString()} - ${new Date(dept.endDate).toLocaleDateString()}</p>
-                    <p>$${parseFloat(dept.fullAmount).toFixed(2)}</p>
-                    <p class="enrollment">${enrollment} Students</p>
-                    ${isExpired ? '<p style="color: #dc3545; font-weight: bold;">EXPIRED</p>' : ''}
+                    <p class="dept-dates">${new Date(dept.startDate).toLocaleDateString()} - ${new Date(dept.endDate).toLocaleDateString()}</p>
+                    <div class="dept-costs">
+                        <div class="cost-item">
+                            <span class="cost-label">Monthly:</span>
+                            <span class="cost-value">$${monthlyAmount.toFixed(2)}</span>
+                        </div>
+                        <div class="cost-item">
+                            <span class="cost-label">Duration:</span>
+                            <span class="cost-value">${monthsDuration} months</span>
+                        </div>
+                        <div class="cost-item">
+                            <span class="cost-label">Total Cost:</span>
+                            <span class="cost-value">$${dept.fullAmount.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div class="dept-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Collected:</span>
+                            <span class="stat-value">$${totalCollected.toFixed(2)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Enrolled:</span>
+                            <span class="stat-value">${enrollment} students</span>
+                        </div>
+                    </div>
+                    ${isExpired ? '<p class="dept-expired">EXPIRED</p>' : ''}
                 </div>
             `;
         });
@@ -2516,11 +2961,193 @@ if (typeof firebase === 'undefined') {
 
 let app;
 
-// Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Starting app initialization...');
-    // Create app after DOM is ready
-    app = new TuitionManager();
-    // loadAllData will wait for Firebase and load all data from Firestore
-    // If it fails, it will show an error
+// ==================== GOOGLE AUTHENTICATION ====================
+
+// Check authentication status
+firebase.auth().onAuthStateChanged(async (user) => {
+    const loginModal = document.getElementById('loginModal');
+    const appContainer = document.getElementById('appContainer');
+    const loginStatusDiv = document.getElementById('loginStatus');
+    const adminTabBtn = document.getElementById('adminTabBtn');
+    
+    if (user) {
+        // User is signed in - check approval status and role
+        console.log('✓ User authenticated:', user.email);
+        
+        // Check if user is admin
+        const isAdmin = user.email === ADMIN_EMAIL;
+        console.log('Is admin:', isAdmin);
+        
+        // Show admin tab if admin
+        if (adminTabBtn && isAdmin) {
+            adminTabBtn.style.display = 'block';
+        }
+        
+        // If admin, auto-approve with admin role
+        if (isAdmin) {
+            try {
+                const db = firebase.firestore();
+                const userDoc = await db.collection('userApprovals').doc(user.uid).get();
+                
+                if (!userDoc.exists || userDoc.data().status !== 'approved' || userDoc.data().role !== 'admin') {
+                    await db.collection('userApprovals').doc(user.uid).set({
+                        email: user.email,
+                        displayName: user.displayName || 'Admin',
+                        photoURL: user.photoURL || '',
+                        status: 'approved',
+                        role: 'admin',
+                        requestedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        uid: user.uid
+                    }, { merge: true });
+                    console.log('Admin auto-approved with admin role');
+                }
+                
+                // Show app for admin
+                if (loginModal) loginModal.style.display = 'none';
+                if (appContainer) appContainer.style.display = 'flex';
+                
+                if (!app) {
+                    console.log('Creating app instance for admin...');
+                    app = new TuitionManager();
+                    app.userRole = 'admin';
+                    await app.loadAllData();
+                }
+            } catch (error) {
+                console.error('Error setting up admin:', error);
+            }
+            return;
+        }
+        
+        try {
+            const db = firebase.firestore();
+            const userDoc = await db.collection('userApprovals').doc(user.uid).get();
+            
+            if (!userDoc.exists) {
+                // New user - create approval request with viewer role
+                console.log('New user, creating approval request...');
+                await db.collection('userApprovals').doc(user.uid).set({
+                    email: user.email,
+                    displayName: user.displayName || 'Unknown',
+                    photoURL: user.photoURL || '',
+                    status: 'pending',
+                    role: 'viewer',
+                    requestedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    uid: user.uid
+                });
+                
+                // Show pending message
+                if (loginModal) {
+                    loginModal.style.display = 'flex';
+                    if (loginStatusDiv) {
+                        loginStatusDiv.innerHTML = `
+                            <div style="text-align: center; padding: 20px; background: #fef3c7; border-radius: 8px; color: #92400e;">
+                                <p style="margin: 0 0 10px 0; font-weight: 600;">⏳ Approval Pending</p>
+                                <p style="margin: 0; font-size: 13px;">Your request for access has been submitted. The administrator will review it shortly. Please check back soon.</p>
+                            </div>
+                        `;
+                        loginStatusDiv.style.display = 'block';
+                    }
+                }
+                if (appContainer) appContainer.style.display = 'none';
+                return;
+            }
+            
+            const userData = userDoc.data();
+            
+            if (userData.status === 'approved') {
+                // User approved - show app
+                console.log('User approved with role:', userData.role);
+                if (loginModal) loginModal.style.display = 'none';
+                if (appContainer) appContainer.style.display = 'flex';
+                
+                // Initialize app if not already done
+                if (!app) {
+                    console.log('Creating app instance...');
+                    app = new TuitionManager();
+                    app.userRole = userData.role || 'viewer';
+                    await app.loadAllData();
+                }
+            } else if (userData.status === 'pending') {
+                // Pending approval
+                console.log('User approval pending');
+                if (loginModal) {
+                    loginModal.style.display = 'flex';
+                    if (loginStatusDiv) {
+                        loginStatusDiv.innerHTML = `
+                            <div style="text-align: center; padding: 20px; background: #fef3c7; border-radius: 8px; color: #92400e;">
+                                <p style="margin: 0 0 10px 0; font-weight: 600;">⏳ Approval Pending</p>
+                                <p style="margin: 0; font-size: 13px;">Your request for access has been submitted. The administrator will review it shortly. Please check back soon.</p>
+                            </div>
+                        `;
+                        loginStatusDiv.style.display = 'block';
+                    }
+                }
+                if (appContainer) appContainer.style.display = 'none';
+            } else if (userData.status === 'rejected') {
+                // Request rejected
+                console.log('User request rejected');
+                if (loginModal) {
+                    loginModal.style.display = 'flex';
+                    if (loginStatusDiv) {
+                        loginStatusDiv.innerHTML = `
+                            <div style="text-align: center; padding: 20px; background: #fee2e2; border-radius: 8px; color: #991b1b;">
+                                <p style="margin: 0 0 10px 0; font-weight: 600;">❌ Access Denied</p>
+                                <p style="margin: 0; font-size: 13px;">Your request for access was rejected by the administrator. Please contact support if you believe this is a mistake.</p>
+                            </div>
+                        `;
+                        loginStatusDiv.style.display = 'block';
+                    }
+                }
+                if (appContainer) appContainer.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Error checking user approval status:', error);
+            // On error, show app (fallback for existing approved users)
+            if (loginModal) loginModal.style.display = 'none';
+            if (appContainer) appContainer.style.display = 'flex';
+            
+            if (!app) {
+                app = new TuitionManager();
+                await app.loadAllData();
+            }
+        }
+    } else {
+        // User is signed out
+        console.log('User not authenticated, showing login');
+        if (loginModal) loginModal.style.display = 'flex';
+        if (appContainer) appContainer.style.display = 'none';
+        if (loginStatusDiv) loginStatusDiv.style.display = 'none';
+    }
 });
+
+// Google Sign-In Button Handler
+document.addEventListener('DOMContentLoaded', async () => {
+    const googleSignInBtn = document.getElementById('googleSignInBtn');
+    if (googleSignInBtn) {
+        googleSignInBtn.addEventListener('click', async () => {
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                await firebase.auth().signInWithPopup(provider);
+                console.log('✓ Google sign-in successful');
+            } catch (error) {
+                console.error('Sign-in error:', error);
+                const errorDiv = document.getElementById('loginError');
+                if (errorDiv) {
+                    errorDiv.textContent = `Sign-in failed: ${error.message}`;
+                    errorDiv.style.display = 'block';
+                }
+            }
+        });
+    }
+});
+
+// Sign out handler (call this from settings when user clicks logout)
+function handleSignOut() {
+    firebase.auth().signOut().then(() => {
+        console.log('✓ User signed out');
+    }).catch(error => {
+        console.error('Sign-out error:', error);
+    });
+}
+

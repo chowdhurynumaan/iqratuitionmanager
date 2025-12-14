@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return request.auth.token.email == 'chowdhurynumaan@gmail.com';
+    }
+    
+    function getUserRole() {
+      let approval = get(/databases/$(database)/documents/userApprovals/$(request.auth.uid));
+      return approval.data.role;
+    }
+    
+    function isApproved() {
+      let approval = get(/databases/$(database)/documents/userApprovals/$(request.auth.uid));
+      return approval.exists && approval.data.status == 'approved';
+    }
+    
+    // User Approvals - only admins can manage
+    match /userApprovals/{userId} {
+      allow read: if request.auth.uid == userId || isAdmin();
+      allow create: if request.auth.uid == userId && request.resource.data.status == 'pending';
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Main data collections with role-based access
+    match /shared_data/{document=**} {
+      // Admins: Full access
+      allow read, write: if isAdmin();
+      
+      // Approved users: Full access
+      allow read, write: if isSignedIn() && isApproved() && (getUserRole() == 'user' || getUserRole() == 'admin');
+      
+      // Approved viewers: Read only
+      allow read: if isSignedIn() && isApproved() && getUserRole() == 'viewer';
+      
+      // Deny all others
+      allow read, write: if false;
+    }
+    
+    // Fallback: Deny everything not explicitly allowed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
